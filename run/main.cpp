@@ -51,8 +51,10 @@ next:;
 	int sz = fileSize(sfn);
 	char *fileAll = new char[sz];
 	FILE *fin = fopen(sfn, "rb");
-	fread(fileAll, 1, sz, fin);
-	fclose(fin);
+	if (fin) {
+		fread(fileAll, 1, sz, fin);
+		fclose(fin);
+	}
 	printf("filesize %d\n", (int) sz), fflush(stdout);
 	
 	typedef pair<int, int> pii; // (off, len)
@@ -160,7 +162,9 @@ QString fileContent(string fn) {
 
 QString localFileContent(QString fn) {
 	QFile file(fn);
-	file.open(QIODevice::ReadOnly);
+	if (!file.open(QIODevice::ReadOnly)) {
+		return "";
+	}
 	QTextStream ts(&file);
 	return ts.readAll();
 }
