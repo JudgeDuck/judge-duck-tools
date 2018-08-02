@@ -81,7 +81,7 @@ QString compile(string source_file, string tasklib_file, string output_path, str
 		return "Contestant compile error\n" + localFileContent(output_path + "gcc_contestant.log").left(10240);
 	if (system((GXX_TASKLIB + output_path + "tasklib.o " + tasklib_file + " " + tasklib_option + " > " + output_path + "gcc_tasklib.log 2>&1").c_str()))
 		return "Tasklib compile error\n" + localFileContent(output_path + "gcc_tasklib.log").left(10240);
-	if (system("ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && ld -o " + output_path + "contestant.exe -T ../judge-duck-libs/judgeduck.ld -m elf_i386 -nostdlib " + output_path + "contestant.o " + output_path + "tasklib.o ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a ../judge-duck-libs/libstdduck/libstdduck.a ../judge-duck-libs/libopenlibm.a ../judge-duck-libs/libgcc.a > " + output_path + "ld.log 2>&1")) {
+	if (system("ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && ld -o " + output_path + "contestant.exe -T ../judge-duck-libs/judgeduck.ld -m elf_i386 -nostdlib " + output_path + "contestant.o " + output_path + "tasklib.o ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a ../judge-duck-libs/libstdduck/libstdduck.a ../judge-duck-libs/libopenlibm.a ../judge-duck-libs/libgcc.a ../judge-duck-libs/libstdc++.a ../judge-duck-libs/libgcc_eh.a ../judge-duck-libs/libstdduck/libstdduck.a > " + output_path + "ld.log 2>&1")) {
 		if (system("c++filt < " + output_path + "ld.log > " + output_path + "filt.log")) {
 			return "Link error and c++filt error\n" + localFileContent(output_path + "ld.log").left(10240);
 		} else {
