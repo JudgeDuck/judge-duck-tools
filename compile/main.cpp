@@ -92,7 +92,7 @@ QString compile(string source_file, string tasklib_file, string output_path, str
 	FILE *fin = fopen((output_path + "size.out").c_str(), "r");
 	unsigned data = 1 << 30, bss = 1 << 30;
 	fscanf(fin, "%*s%*s%*s%*s%*s%*s%*s%d%d", &data, &bss);
-	if(data + bss > (1280u << 20))
+	if(data + bss > (2176u << 20))
 		return "Too large global variables";
 	fclose(fin);
 	
