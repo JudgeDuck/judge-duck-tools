@@ -70,14 +70,20 @@ next:;
 		todo.insert(pii(i, min(sz - i, PKSIZE)));
 	// printf("total todo %d\n", (int) todo.size()), fflush(stdout);
 	
+	const int WINDOWSIZE = 100;
+	
+	const int ECHO_CNT = 300;
+	int n_pkt = 0;
+	
 	while (todo.size()) {
 		printf("remaining %d\n", (int) todo.size()), fflush(stdout);
 		vector<pii> todo_copy(todo.begin(), todo.end());
 		int online = 0;
 		for (pii p: todo_copy) {
-			if (online >= 20) break;
 			++online;
-			printf("send %d | %d\n", p.first, online), fflush(stdout);
+			if (++n_pkt % ECHO_CNT == 0) {
+				printf("send %d | %d\n", p.first, online), fflush(stdout);
+			}
 			memcpy(buf + 4, &p.first, 4);
 			memcpy(buf + 8, fileAll + p.first, p.second);
 			buf[0] = 'g';
@@ -85,9 +91,10 @@ next:;
 			buf[2] = 'g';
 			buf[3] = 'g';
 			ds.writeRawData(buf, p.second + 8);
-			sock_b.flush();
-			// usleep(10000);
-			while (sock_b.waitForReadyRead(online >= 20 ? 1000 : 1)) {
+			if ((WINDOWSIZE - online) % 10 == 0) sock_b.flush();
+			if (online < WINDOWSIZE) continue;
+			
+			while (sock_b.waitForReadyRead(online >= WINDOWSIZE ? 1000 : 0)) {
 				int len = sock_b.readDatagram(buf, sizeof(buf));
 				buf[len] = 0;
 				if (buf[0] != 'a') {
@@ -96,12 +103,16 @@ next:;
 				}
 				int off; memcpy(&off, buf + 4, 4);
 				--online;
-				printf("ack %d | %d\n", off, online), fflush(stdout);
+				if (++n_pkt % ECHO_CNT == 0) {
+					printf("ack %d | %d\n", off, online), fflush(stdout);
+				}
 				auto it = todo.lower_bound(pii(off, 0));
 				if (it != todo.end() && it->first == off) todo.erase(it);
 				if (!todo.size()) break;
 			}
+			if (online >= WINDOWSIZE) break;
 		}
+		
 		if (todo.size()) while (sock_b.waitForReadyRead(1000)) {
 			int len = sock_b.readDatagram(buf, sizeof(buf));
 			buf[len] = 0;
@@ -110,7 +121,9 @@ next:;
 				continue;
 			}
 			int off; memcpy(&off, buf + 4, 4);
-			printf("ack %d\n", off), fflush(stdout);
+			if (++n_pkt % ECHO_CNT == 0) {
+				printf("ack %d\n", off), fflush(stdout);
+			}
 			auto it = todo.lower_bound(pii(off, 0));
 			if(it != todo.end() && it->first == off) todo.erase(it);
 			if(!todo.size()) break;
@@ -224,14 +237,20 @@ next:;
 		todo.insert(pii(i, min(sz - i, PKSIZE)));
 	// printf("total todo %d\n", (int) todo.size()), fflush(stdout);
 	
+	const int WINDOWSIZE = 100;
+	
+	const int ECHO_CNT = 300;
+	int n_pkt = 0;
+	
 	while (todo.size()) {
 		printf("remaining %d\n", (int) todo.size()), fflush(stdout);
 		vector<pii> todo_copy(todo.begin(), todo.end());
 		int online = 0;
 		for (pii p: todo_copy) {
-			if (online >= 20) break;
 			++online;
-			printf("send %d | %d\n", p.first, online), fflush(stdout);
+			if (++n_pkt % ECHO_CNT == 0) {
+				printf("send %d | %d\n", p.first, online), fflush(stdout);
+			}
 			memcpy(buf + 4, &p.first, 4);
 			memcpy(buf + 8, fileAll + p.first, p.second);
 			buf[0] = 'g';
@@ -239,9 +258,10 @@ next:;
 			buf[2] = 'g';
 			buf[3] = 'g';
 			ds.writeRawData(buf, p.second + 8);
-			sock_b.flush();
-			// usleep(10000);
-			while (sock_b.waitForReadyRead(online >= 20 ? 1000 : 1)) {
+			if ((WINDOWSIZE - online) % 10 == 0) sock_b.flush();
+			if (online < WINDOWSIZE) continue;
+			
+			while (sock_b.waitForReadyRead(online >= WINDOWSIZE ? 1000 : 0)) {
 				int len = sock_b.readDatagram(buf, sizeof(buf));
 				buf[len] = 0;
 				if (buf[0] != 'a') {
@@ -250,12 +270,16 @@ next:;
 				}
 				int off; memcpy(&off, buf + 4, 4);
 				--online;
-				printf("ack %d | %d\n", off, online), fflush(stdout);
+				if (++n_pkt % ECHO_CNT == 0) {
+					printf("ack %d | %d\n", off, online), fflush(stdout);
+				}
 				auto it = todo.lower_bound(pii(off, 0));
 				if (it != todo.end() && it->first == off) todo.erase(it);
 				if (!todo.size()) break;
 			}
+			if (online >= WINDOWSIZE) break;
 		}
+		
 		if (todo.size()) while (sock_b.waitForReadyRead(1000)) {
 			int len = sock_b.readDatagram(buf, sizeof(buf));
 			buf[len] = 0;
@@ -264,7 +288,9 @@ next:;
 				continue;
 			}
 			int off; memcpy(&off, buf + 4, 4);
-			printf("ack %d\n", off), fflush(stdout);
+			if (++n_pkt % ECHO_CNT == 0) {
+				printf("ack %d\n", off), fflush(stdout);
+			}
 			auto it = todo.lower_bound(pii(off, 0));
 			if(it != todo.end() && it->first == off) todo.erase(it);
 			if(!todo.size()) break;
@@ -324,7 +350,7 @@ void sendDataFiles(const char *in_file, const char *ans_file) {
 QString judgeFile(string ip, int local_port, string input_file, string answer_file, string binary_file) {
 	size_t sz = fileSize(binary_file.c_str());
 	if (sz <= 0) return "Binary too small";
-	if (sz >= 2048 * 1024) return "Binary too large";
+	if (sz >= 20480 * 1024) return "Binary too large";
 	
 	qDebug() << sock_b.bind(local_port);
 	sock_c.connectToHost(ip.c_str(), 8000);
