@@ -112,7 +112,7 @@ next:;
 			}
 			if (online >= WINDOWSIZE) break;
 		}
-		
+		sock_b.flush();
 		if (todo.size()) while (sock_b.waitForReadyRead(1000)) {
 			int len = sock_b.readDatagram(buf, sizeof(buf));
 			buf[len] = 0;
@@ -279,7 +279,7 @@ next:;
 			}
 			if (online >= WINDOWSIZE) break;
 		}
-		
+		sock_b.flush();
 		if (todo.size()) while (sock_b.waitForReadyRead(1000)) {
 			int len = sock_b.readDatagram(buf, sizeof(buf));
 			buf[len] = 0;
