@@ -48,13 +48,13 @@ QString compile(string source_file, string tasklib_file, string output_path, str
 	if (output_path.length() == 0) output_path = ".";
 	if (output_path[output_path.length() - 1] != '/') output_path += '/';
 	
-	string GCC = "ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && gcc  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -gstabs -c -o ";
+	string GCC = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && gcc -static  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -gstabs -c -o ";
 	
-	string GXX = "ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && g++  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics -gstabs -c -o ";
+	string GXX = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && g++ -static  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics -gstabs -c -o ";
 	
-	string GXX11 = "ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && g++  -pipe  -O2 -std=c++11 -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics -gstabs -c -o ";
+	string GXX11 = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && g++ -static  -pipe  -O2 -std=c++11 -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics -gstabs -c -o ";
 	
-	string GXX_TASKLIB = "ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && g++  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics  -I../judge-duck-libs/libtaskduck_include -DJOS_USER -gstabs -c -o ";
+	string GXX_TASKLIB = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && g++ -static  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics  -I../judge-duck-libs/libtaskduck_include -DJOS_USER -gstabs -c -o ";
 	
 	string G = GCC;
 	if (language == "C++") {
@@ -81,7 +81,8 @@ QString compile(string source_file, string tasklib_file, string output_path, str
 		return "Contestant compile error\n" + localFileContent(output_path + "gcc_contestant.log").left(10240);
 	if (system((GXX_TASKLIB + output_path + "tasklib.o " + tasklib_file + " " + tasklib_option + " > " + output_path + "gcc_tasklib.log 2>&1").c_str()))
 		return "Tasklib compile error\n" + localFileContent(output_path + "gcc_tasklib.log").left(10240);
-	if (system("ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && ld -o " + output_path + "contestant.exe -T ../judge-duck-libs/judgeduck.ld -m elf_i386 -nostdlib " + output_path + "contestant.o " + output_path + "tasklib.o ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a ../judge-duck-libs/libstdduck/libstdduck.a ../judge-duck-libs/libopenlibm.a ../judge-duck-libs/libgcc.a ../judge-duck-libs/libstdc++.a ../judge-duck-libs/libgcc_eh.a ../judge-duck-libs/libstdduck/libstdduck.a > " + output_path + "ld.log 2>&1")) {
+	if (system("ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && ld -z muldefs -static -o" + output_path + "contestant.exe -T ../judge-duck-libs/judgeduck.ld -m elf_i386 -nostdlib " + output_path + "contestant.o " + output_path + "tasklib.o ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a -L../libc-duck/lib -L../judge-duck-libs -lstdc++ -lm -lc -lgcc -lgcc_eh -lc > " + output_path + "ld.log 2>&1")) {
+	//if (system("ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && ld " + output_path + "contestant.exe -T ../judge-duck-libs/judgeduck.ld -m elf_i386 -nostdlib " + output_path + "contestant.o " + output_path + "tasklib.o ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a ../judge-duck-libs/libstdduck/libstdduck.a ../judge-duck-libs/libopenlibm.a ../judge-duck-libs/libgcc.a ../judge-duck-libs/libstdc++.a ../judge-duck-libs/libgcc_eh.a ../judge-duck-libs/libstdduck/libstdduck.a > " + output_path + "ld.log 2>&1")) {
 		if (system("c++filt < " + output_path + "ld.log > " + output_path + "filt.log")) {
 			return "Link error and c++filt error\n" + localFileContent(output_path + "ld.log").left(10240);
 		} else {
