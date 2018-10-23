@@ -38,58 +38,85 @@ QString localFileContent(std::string fn) {
 	return localFileContent(fn.c_str());
 }
 
+string cmd_prefix = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && ";
+
 int system(std::string s) {
+	s = cmd_prefix + s;
 	return system(s.c_str());
 }
 
+int system(std::string s, QString &out, std::string log_path = "") {
+	if (log_path.length() != 0 && log_path[log_path.length() - 1] != '/') {
+		log_path += '/';
+	}
+	string log_file = log_path + "____log.txt";
+	int ret = system(s + " > " + log_file + " 2>&1");
+	out = localFileContent(log_file).left(10240);
+	return ret;
+}
+
 QTextStream qout(stdout);
+
+string duck_cc = "gcc -static -pipe -m32 -U_FORTIFY_SOURCE -O2 -c -fno-stack-protector ";
+string duck_cxx = "g++ -static -pipe -m32 -U_FORTIFY_SOURCE -O2 -c -fno-stack-protector -fno-exceptions ";
+
+string cxx11_flags = " -std=c++11 ";
+
+// TODO: Remove tasklib !!
+string tasklib_cxxflags = " -I../judge-duck-libs/libtaskduck_include -DJOS_USER ";
+string tasklib_cxxflags_c = " -DTASKLIB_USE_C ";
+
+string duck_ld = "ld -static -m elf_i386 -nostdlib -T ../judge-duck-libs/judgeduck.ld ";
+
+string duck_ldflags_suf_c = " ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a -L../libc-duck/lib -L../judge-duck-libs -lm -lc -lgcc -lgcc_eh -lc ";
+string duck_ldflags_suf_cxx = " ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a -L../libc-duck/lib -L../judge-duck-libs -lstdc++ -lm -lc -lgcc -lgcc_eh -lc ";
 
 QString compile(string source_file, string tasklib_file, string output_path, string language) {
 	if (output_path.length() == 0) output_path = ".";
 	if (output_path[output_path.length() - 1] != '/') output_path += '/';
 	
-	string GCC = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && gcc -static  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -gstabs -c -o ";
-	
-	string GXX = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && g++ -static  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics -gstabs -c -o ";
-	
-	string GXX11 = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && g++ -static  -pipe  -O2 -std=c++11 -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics -gstabs -c -o ";
-	
-	string GXX_TASKLIB = "ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && g++ -static  -pipe  -O2  -MD -fno-omit-frame-pointer -static -Wall -Wno-format -Wno-unused -gstabs -m32 -fno-tree-ch -fno-stack-protector -fno-exceptions -fno-unwind-tables -fno-rtti -fno-threadsafe-statics  -I../judge-duck-libs/libtaskduck_include -DJOS_USER -gstabs -c -o ";
-	
-	string G = GCC;
+	string compiler = duck_cc;
 	if (language == "C++") {
-		G = GXX;
+		compiler = duck_cxx;
 	} else if (language == "C++11") {
-		G = GXX11;
+		compiler = duck_cxx + cxx11_flags;
 	}
 	
-	string tasklib_option = "";
+	string tasklib_flags = tasklib_cxxflags;
 	if (language == "C") {
-		tasklib_option = "-DTASKLIB_USE_C";
+		tasklib_flags += tasklib_cxxflags_c;
 	}
 	
 	qout << "Compiling...\n";
 	qout.flush();
 	
-	string contestant_filename = source_file;
+	string contestant_src = source_file;
+	string contestant_obj = output_path + "contestant.o";
+	string tasklib_src = tasklib_file;
+	string tasklib_obj = output_path + "tasklib.o";
+	string contestant_exe = output_path + "contestant.exe";
+
+	QString log;
 	
-	if (language != "C") {
-		contestant_filename = contestant_filename + " -fno-use-cxa-atexit";
+	if (system(compiler + contestant_src + " -o " + contestant_obj, log, output_path)) {
+		return "Contestant compile error\n" + log;
 	}
-	contestant_filename = contestant_filename + " -U_FORTIFY_SOURCE";
-	if (system((G + output_path + "contestant.o " + contestant_filename + " > " + output_path + "gcc_contestant.log 2>&1").c_str()))
-		return "Contestant compile error\n" + localFileContent(output_path + "gcc_contestant.log").left(10240);
-	if (system((GXX_TASKLIB + output_path + "tasklib.o " + tasklib_file + " " + tasklib_option + " > " + output_path + "gcc_tasklib.log 2>&1").c_str()))
-		return "Tasklib compile error\n" + localFileContent(output_path + "gcc_tasklib.log").left(10240);
-	if (system("ulimit -v 524288 && ulimit -f 20480 && ulimit -t 10 && ld -z muldefs -static -o" + output_path + "contestant.exe -T ../judge-duck-libs/judgeduck.ld -m elf_i386 -nostdlib " + output_path + "contestant.o " + output_path + "tasklib.o ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a -L../libc-duck/lib -L../judge-duck-libs -lstdc++ -lm -lc -lgcc -lgcc_eh -lc > " + output_path + "ld.log 2>&1")) {
-	//if (system("ulimit -v 524288 && ulimit -f 2048 && ulimit -t 10 && ld " + output_path + "contestant.exe -T ../judge-duck-libs/judgeduck.ld -m elf_i386 -nostdlib " + output_path + "contestant.o " + output_path + "tasklib.o ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a ../judge-duck-libs/libstdduck/libstdduck.a ../judge-duck-libs/libopenlibm.a ../judge-duck-libs/libgcc.a ../judge-duck-libs/libstdc++.a ../judge-duck-libs/libgcc_eh.a ../judge-duck-libs/libstdduck/libstdduck.a > " + output_path + "ld.log 2>&1")) {
-		if (system("c++filt < " + output_path + "ld.log > " + output_path + "filt.log")) {
-			return "Link error and c++filt error\n" + localFileContent(output_path + "ld.log").left(10240);
+	if (system(duck_cxx + tasklib_flags + tasklib_src + " -o " + tasklib_obj, log, output_path)) {
+		return "Tasklib compile error\n" + log;
+	}
+	
+	string ld_logfile = output_path + "ld.log";
+	string ldflags_suf = language == "C" ? duck_ldflags_suf_c : duck_ldflags_suf_cxx;
+	if (system(duck_ld + " -o " + contestant_exe + " " + contestant_obj + " " + tasklib_obj + ldflags_suf + " > " + ld_logfile + " 2>&1")) {
+		if (system("c++filt < " + ld_logfile, log, output_path)) {
+			return "Link error and c++filt error\n" + log;
 		} else {
-			return "Link error\n" + localFileContent(output_path + "filt.log").left(10240);
+			return "Link error\n" + localFileContent(ld_logfile).left(10240);
 		}
 	}
-	system(("size " + output_path + "contestant.exe > " + output_path + "size.out").c_str());
+
+	string size_outfile = output_path + "size.out";
+	system("size " + contestant_exe + " > " + size_outfile);
 	FILE *fin = fopen((output_path + "size.out").c_str(), "r");
 	unsigned data = 1 << 30, bss = 1 << 30;
 	fscanf(fin, "%*s%*s%*s%*s%*s%*s%*s%d%d", &data, &bss);
