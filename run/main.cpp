@@ -18,6 +18,12 @@ QDataStream ds;
 
 #define printf(x...) fprintf(stderr, x)
 
+double getUnixTime() {
+    struct timespec tv;
+    if(clock_gettime(CLOCK_REALTIME, &tv) != 0) return 0;
+    return (tv.tv_sec + (tv.tv_nsec / 1000000000.0));
+}
+
 size_t fileSize(const char *fn) {
 	struct stat st;
 	if (stat(fn, &st))
@@ -36,6 +42,7 @@ void sendPacket(string content) {
 void sendFile(const char *sfn, const char *tfn) {
 	char buf[5120];
 	printf("send %s -> %s\n", sfn, tfn);
+	double time_start = getUnixTime();
 	string fn = string("f") + tfn;
 	// qDebug() << bs.readAll();
 	ts << fn.c_str();
@@ -140,6 +147,8 @@ next:;
 			buf[len] = 0;
 			if (buf[0] == 's') {
 				printf("sync ok\n"), fflush(stdout);
+				double dt = max((getUnixTime() - time_start) * 1000.0, 1.0);
+				printf("Sent %d bytes in %.0lf ms (%.0lf KB/s)\n", sz, dt, sz / (dt * 0.001) / 1024.0), fflush(stdout);
 				return;
 			}
 			else printf("sync fail %s\n", buf);
@@ -194,6 +203,7 @@ long long time_ns; int mem_kb;
 void sendObj(const char *filename, const char *md5) {
 	char buf[5120];
 	printf("send obj %s %s\n", filename, md5);
+	double time_start = getUnixTime();
 	string fn = string("sendobj xxxx") + md5;
 	int sz = fileSize(filename);
 	
@@ -307,6 +317,8 @@ next:;
 			buf[len] = 0;
 			if (buf[0] == 's') {
 				printf("sync ok\n"), fflush(stdout);
+				double dt = max((getUnixTime() - time_start) * 1000.0, 1.0);
+				printf("Sent %d bytes in %.0lf ms (%.0lf KB/s)\n", sz, dt, sz / (dt * 0.001) / 1024.0), fflush(stdout);
 				return;
 			}
 			else printf("sync fail %s\n", buf);
