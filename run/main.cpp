@@ -77,9 +77,9 @@ next:;
 		todo.insert(pii(i, min(sz - i, PKSIZE)));
 	// printf("total todo %d\n", (int) todo.size()), fflush(stdout);
 	
-	const int WINDOWSIZE = 100;
+	const int WINDOWSIZE = 64;
 	
-	const int ECHO_CNT = 300;
+	const int ECHO_CNT = 300 * 30;
 	int n_pkt = 0;
 	
 	while (todo.size()) {
@@ -247,9 +247,9 @@ next:;
 		todo.insert(pii(i, min(sz - i, PKSIZE)));
 	// printf("total todo %d\n", (int) todo.size()), fflush(stdout);
 	
-	const int WINDOWSIZE = 100;
+	const int WINDOWSIZE = 64;
 	
-	const int ECHO_CNT = 300;
+	const int ECHO_CNT = 300 * 30;
 	int n_pkt = 0;
 	
 	while (todo.size()) {
