@@ -42,6 +42,14 @@ void sendPacket(string content) {
 void sendFile(const char *sfn, const char *tfn) {
 	char buf[5120];
 	printf("send %s -> %s\n", sfn, tfn);
+	int sz = fileSize(sfn);
+	char *fileAll = new char[sz];
+	FILE *fin = fopen(sfn, "rb");
+	if (fin) {
+		fread(fileAll, 1, sz, fin);
+		fclose(fin);
+	}
+	printf("filesize %d\n", (int) sz), fflush(stdout);
 	double time_start = getUnixTime();
 	string fn = string("f") + tfn;
 	// qDebug() << bs.readAll();
@@ -61,15 +69,6 @@ void sendFile(const char *sfn, const char *tfn) {
 		}
 	}
 next:;
-	int sz = fileSize(sfn);
-	char *fileAll = new char[sz];
-	FILE *fin = fopen(sfn, "rb");
-	if (fin) {
-		fread(fileAll, 1, sz, fin);
-		fclose(fin);
-	}
-	printf("filesize %d\n", (int) sz), fflush(stdout);
-	
 	typedef pair<int, int> pii; // (off, len)
 	set<pii> todo;
 	const int PKSIZE = 1450;
@@ -203,9 +202,16 @@ long long time_ns; int mem_kb;
 void sendObj(const char *filename, const char *md5) {
 	char buf[5120];
 	printf("send obj %s %s\n", filename, md5);
-	double time_start = getUnixTime();
 	string fn = string("sendobj xxxx") + md5;
 	int sz = fileSize(filename);
+	char *fileAll = new char[sz];
+	FILE *fin = fopen(filename, "rb");
+	if (fin) {
+		fread(fileAll, 1, sz, fin);
+		fclose(fin);
+	}
+	printf("filesize %d\n", (int) sz), fflush(stdout);
+	double time_start = getUnixTime();
 	
 	char tmp[4];
 	memcpy(tmp, &sz, 4);
@@ -232,14 +238,6 @@ void sendObj(const char *filename, const char *md5) {
 		}
 	}
 next:;
-	char *fileAll = new char[sz];
-	FILE *fin = fopen(filename, "rb");
-	if (fin) {
-		fread(fileAll, 1, sz, fin);
-		fclose(fin);
-	}
-	printf("filesize %d\n", (int) sz), fflush(stdout);
-	
 	typedef pair<int, int> pii; // (off, len)
 	set<pii> todo;
 	const int PKSIZE = 1450;
