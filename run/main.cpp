@@ -362,6 +362,11 @@ QString judgeFile(string ip, int local_port, string input_file, string answer_fi
 	if (sz <= 0) return "Binary too small";
 	if (sz >= 20480 * 1024) return "Binary too large";
 	
+	while (1) {
+		if (system(("ping " + ip + " -c 1 -t 1 | grep ttl=233 > /dev/null 2>&1").c_str()) == 0) break;
+		sleep(1);
+	}
+	
 	qDebug() << sock_b.bind(local_port);
 	sock_c.connectToHost(ip.c_str(), 8000);
 	qDebug() << sock_c.waitForConnected();
