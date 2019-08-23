@@ -173,14 +173,16 @@ QString fileContent(string fn) {
 	ts << fn.c_str();
 	ts.flush();
 	QString ret = "";
+	std::string str;
 	while (1) {
 		sock_b.waitForReadyRead();
 		char buf[2048];
 		int len = sock_b.readDatagram(buf, sizeof(buf));
 		if (len == 1 && buf[0] == 'F') break;
 		//ret += QString(buf + 1, len - 1);
-		for (int i = 1; i < len; i++) ret += QChar(buf[i]);
+		for (int i = 1; i < len; i++) str += buf[i];
 	}
+	ret = QString::fromStdString(str);
 	//sock_b.waitForReadyRead();
 	//QString ret = bs.readAll();
 	printf("fileContent ok:\n%s", ret.toStdString().c_str());
