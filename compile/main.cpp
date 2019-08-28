@@ -68,8 +68,10 @@ string tasklib_cxxflags_c = " -DTASKLIB_USE_C ";
 
 string duck_ld = "ld -static -m elf_i386 -nostdlib -T ../judge-duck-libs/judgeduck.ld ";
 
-string duck_ldflags_suf_c = " ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a -L../libc-duck/lib -L../judge-duck-libs -lm -lc -lgcc -lgcc_eh -lc ";
-string duck_ldflags_suf_cxx = " ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a -L../libc-duck/lib -L../judge-duck-libs -lstdc++ -lm -lc -lgcc -lgcc_eh -lc ";
+string GCC_version = "gcc-8";
+
+string duck_ldflags_suf_c = " ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a -L../libc-duck/lib -L../judge-duck-libs/" + GCC_version + " -lm -lc -lgcc -lgcc_eh -lc ";
+string duck_ldflags_suf_cxx = " ../judge-duck-libs/libtaskduck/libtaskduck.a ../judge-duck-libs/libjudgeduck/libjudgeduck.a -L../libc-duck/lib -L../judge-duck-libs/" + GCC_version + " -lstdc++ -lm -lc -lgcc -lgcc_eh -lc ";
 
 QString compile(string source_file, string tasklib_file, string output_path, string language) {
 	if (output_path.length() == 0) output_path = ".";
