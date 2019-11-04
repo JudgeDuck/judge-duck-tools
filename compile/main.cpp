@@ -108,7 +108,7 @@ QString compile(string source_file, string tasklib_file, string output_path, str
 	}
 	
 	string ld_logfile = output_path + "ld.log";
-	string ldflags_suf = language == "C" ? duck_ldflags_suf_c : duck_ldflags_suf_cxx;
+	string ldflags_suf = duck_ldflags_suf_cxx;
 	if (system(duck_ld + " -o " + contestant_exe + " " + contestant_obj + " " + tasklib_obj + ldflags_suf + " > " + ld_logfile + " 2>&1")) {
 		if (system("c++filt < " + ld_logfile, log, output_path)) {
 			return "Link error and c++filt error\n" + log;
