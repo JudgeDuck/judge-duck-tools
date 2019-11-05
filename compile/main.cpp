@@ -57,8 +57,8 @@ int system(std::string s, QString &out, std::string log_path = "") {
 
 QTextStream qout(stdout);
 
-string duck_cc = "gcc -static -pipe -m32 -U_FORTIFY_SOURCE -O2 -c -fno-stack-protector ";
-string duck_cxx = "g++ -static -pipe -m32 -U_FORTIFY_SOURCE -O2 -c -fno-stack-protector -fno-exceptions ";
+string duck_cc = "gcc -static -pipe -m32 -U_FORTIFY_SOURCE -O2 -c -fno-stack-protector -fno-PIC ";
+string duck_cxx = "g++ -static -pipe -m32 -U_FORTIFY_SOURCE -O2 -c -fno-stack-protector -fno-PIC -fno-exceptions ";
 
 string cxx11_flags = " -std=c++11 ";
 
