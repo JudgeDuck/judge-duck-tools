@@ -39,6 +39,92 @@ void sendPacket(string content) {
 	ts.flush();
 }
 
+void send_payload(char *buf, int sz, char *payload, double time_start) {
+	typedef pair<int, int> pii;
+	typedef pair<double, pii> pdii;
+	set<int> todo_set;
+	priority_queue<pdii, vector<pdii>, greater<pdii> > todo_queue;
+	const int PACKET_SIZE = 1400;
+	const double RTT_ms = 2;
+	const double RTT_s = RTT_ms * 0.001;
+	
+	for (int i = 0; i < sz; i += PACKET_SIZE) {
+		todo_set.insert(i);
+		todo_queue.push(pdii(time_start, pii(i, min(sz - i, PACKET_SIZE))));
+	}
+	
+	double next_report_t = getUnixTime();
+	int n_cur_sent = 0;
+	while (!todo_queue.empty()) {
+		if (getUnixTime() >= next_report_t) {
+			printf("set_size %d, queue_size %d, cur_sent %d\n", (int) todo_set.size(), (int) todo_queue.size(), n_cur_sent);
+			next_report_t += 1.0;
+			n_cur_sent = 0;
+		}
+		if (sock_b.waitForReadyRead(0)) {
+			int len = sock_b.readDatagram(buf, sizeof(buf));
+			if (len <= 5) continue;
+			buf[len] = 0;
+			if (buf[0] != 'a') {
+				printf("ack wrong %s\n", buf), fflush(stdout);
+				continue;
+			}
+			int off; memcpy(&off, buf + 4, 4);
+			if (todo_set.count(off) == 0) continue;
+			todo_set.erase(off);
+		} else {
+			pdii p = todo_queue.top();
+			
+			int off = p.second.first;
+			int len = p.second.second;
+			if (todo_set.count(off) == 0) {
+				todo_queue.pop();
+				continue;
+			}
+			
+			double t = p.first;
+			double cur_t = getUnixTime();
+			if (cur_t < t) {
+				continue;
+			}
+			
+			todo_queue.pop();
+			todo_queue.push(pdii(t + RTT_s, p.second));
+			
+			memcpy(buf + 4, &off, 4);
+			memcpy(buf + 8, payload + off, len);
+			buf[0] = 'g';
+			buf[1] = 'g';
+			buf[2] = 'g';
+			buf[3] = 'g';
+			sock_c.write(buf, len + 8);
+			sock_c.flush();
+			++n_cur_sent;
+		}
+	}
+	
+	delete[] payload;
+	printf("send ok, waiting sync\n"), fflush(stdout);
+	while (1) {
+		ts << "e";
+		ts.flush();
+		bool ok = false;
+		while (sock_b.waitForReadyRead(RTT_ms + 1)) {
+			int len = sock_b.readDatagram(buf, sizeof(buf));
+			buf[len] = 0;
+			if (buf[0] == 's') {
+				printf("sync ok\n"), fflush(stdout);
+				ok = true;
+			}
+		}
+		if (ok) {
+			double dt = max((getUnixTime() - time_start) * 1000.0, 1.0);
+			printf("Sent %d bytes in %.0lf ms (%.0lf KB/s)\n", sz, dt, sz / (dt * 0.001) / 1024.0), fflush(stdout);
+			break;
+		}
+	}
+}
+
 void sendFile(const char *sfn, const char *tfn) {
 	char buf[5120];
 	printf("send %s -> %s\n", sfn, tfn);
@@ -69,90 +155,7 @@ void sendFile(const char *sfn, const char *tfn) {
 		}
 	}
 next:;
-	typedef pair<int, int> pii; // (off, len)
-	set<pii> todo;
-	const int PKSIZE = 1450;
-	for(int i = 0; i < sz; i += PKSIZE)
-		todo.insert(pii(i, min(sz - i, PKSIZE)));
-	// printf("total todo %d\n", (int) todo.size()), fflush(stdout);
-	
-	const int WINDOWSIZE = 64;
-	
-	const int ECHO_CNT = 300 * 30;
-	int n_pkt = 0;
-	
-	while (todo.size()) {
-		printf("remaining %d\n", (int) todo.size()), fflush(stdout);
-		vector<pii> todo_copy(todo.begin(), todo.end());
-		int online = 0;
-		for (pii p: todo_copy) {
-			++online;
-			if (++n_pkt % ECHO_CNT == 0) {
-				printf("send %d | %d\n", p.first, online), fflush(stdout);
-			}
-			memcpy(buf + 4, &p.first, 4);
-			memcpy(buf + 8, fileAll + p.first, p.second);
-			buf[0] = 'g';
-			buf[1] = 'g';
-			buf[2] = 'g';
-			buf[3] = 'g';
-			ds.writeRawData(buf, p.second + 8);
-			if ((WINDOWSIZE - online) % 10 == 0) sock_b.flush();
-			if (online < WINDOWSIZE) continue;
-			
-			while (sock_b.waitForReadyRead(online >= WINDOWSIZE ? 1000 : 0)) {
-				int len = sock_b.readDatagram(buf, sizeof(buf));
-				buf[len] = 0;
-				if (buf[0] != 'a') {
-					printf("ack wrong %s\n", buf), fflush(stdout);
-					continue;
-				}
-				int off; memcpy(&off, buf + 4, 4);
-				--online;
-				if (++n_pkt % ECHO_CNT == 0) {
-					printf("ack %d | %d\n", off, online), fflush(stdout);
-				}
-				auto it = todo.lower_bound(pii(off, 0));
-				if (it != todo.end() && it->first == off) todo.erase(it);
-				if (!todo.size()) break;
-			}
-			if (online >= WINDOWSIZE) break;
-		}
-		sock_b.flush();
-		if (todo.size()) while (sock_b.waitForReadyRead(1000)) {
-			int len = sock_b.readDatagram(buf, sizeof(buf));
-			buf[len] = 0;
-			if (buf[0] != 'a') {
-				printf("ack wrong %s\n", buf), fflush(stdout);
-				continue;
-			}
-			int off; memcpy(&off, buf + 4, 4);
-			if (++n_pkt % ECHO_CNT == 0) {
-				printf("ack %d\n", off), fflush(stdout);
-			}
-			auto it = todo.lower_bound(pii(off, 0));
-			if(it != todo.end() && it->first == off) todo.erase(it);
-			if(!todo.size()) break;
-		}
-	}
-	delete[] fileAll;
-	printf("send ok, waiting sync\n"), fflush(stdout);
-	while (1) {
-		ts << "e";
-		ts.flush();
-		// bs.readAll();
-		while (sock_b.waitForReadyRead(1000)) {
-			int len = sock_b.readDatagram(buf, sizeof(buf));
-			buf[len] = 0;
-			if (buf[0] == 's') {
-				printf("sync ok\n"), fflush(stdout);
-				double dt = max((getUnixTime() - time_start) * 1000.0, 1.0);
-				printf("Sent %d bytes in %.0lf ms (%.0lf KB/s)\n", sz, dt, sz / (dt * 0.001) / 1024.0), fflush(stdout);
-				return;
-			}
-			else printf("sync fail %s\n", buf);
-		}
-	}
+	send_payload(buf, sz, fileAll, time_start);
 }
 void runCmd(string cmd) {
 	printf("runCmd %s\n", cmd.c_str());
@@ -240,90 +243,7 @@ void sendObj(const char *filename, const char *md5) {
 		}
 	}
 next:;
-	typedef pair<int, int> pii; // (off, len)
-	set<pii> todo;
-	const int PKSIZE = 1450;
-	for(int i = 0; i < sz; i += PKSIZE)
-		todo.insert(pii(i, min(sz - i, PKSIZE)));
-	// printf("total todo %d\n", (int) todo.size()), fflush(stdout);
-	
-	const int WINDOWSIZE = 64;
-	
-	const int ECHO_CNT = 300 * 30;
-	int n_pkt = 0;
-	
-	while (todo.size()) {
-		printf("remaining %d\n", (int) todo.size()), fflush(stdout);
-		vector<pii> todo_copy(todo.begin(), todo.end());
-		int online = 0;
-		for (pii p: todo_copy) {
-			++online;
-			if (++n_pkt % ECHO_CNT == 0) {
-				printf("send %d | %d\n", p.first, online), fflush(stdout);
-			}
-			memcpy(buf + 4, &p.first, 4);
-			memcpy(buf + 8, fileAll + p.first, p.second);
-			buf[0] = 'g';
-			buf[1] = 'g';
-			buf[2] = 'g';
-			buf[3] = 'g';
-			ds.writeRawData(buf, p.second + 8);
-			if ((WINDOWSIZE - online) % 10 == 0) sock_b.flush();
-			if (online < WINDOWSIZE) continue;
-			
-			while (sock_b.waitForReadyRead(online >= WINDOWSIZE ? 1000 : 0)) {
-				int len = sock_b.readDatagram(buf, sizeof(buf));
-				buf[len] = 0;
-				if (buf[0] != 'a') {
-					printf("ack wrong %s\n", buf), fflush(stdout);
-					continue;
-				}
-				int off; memcpy(&off, buf + 4, 4);
-				--online;
-				if (++n_pkt % ECHO_CNT == 0) {
-					printf("ack %d | %d\n", off, online), fflush(stdout);
-				}
-				auto it = todo.lower_bound(pii(off, 0));
-				if (it != todo.end() && it->first == off) todo.erase(it);
-				if (!todo.size()) break;
-			}
-			if (online >= WINDOWSIZE) break;
-		}
-		sock_b.flush();
-		if (todo.size()) while (sock_b.waitForReadyRead(1000)) {
-			int len = sock_b.readDatagram(buf, sizeof(buf));
-			buf[len] = 0;
-			if (buf[0] != 'a') {
-				printf("ack wrong %s\n", buf), fflush(stdout);
-				continue;
-			}
-			int off; memcpy(&off, buf + 4, 4);
-			if (++n_pkt % ECHO_CNT == 0) {
-				printf("ack %d\n", off), fflush(stdout);
-			}
-			auto it = todo.lower_bound(pii(off, 0));
-			if(it != todo.end() && it->first == off) todo.erase(it);
-			if(!todo.size()) break;
-		}
-	}
-	delete[] fileAll;
-	printf("send ok, waiting sync\n"), fflush(stdout);
-	while (1) {
-		ts << "e";
-		ts.flush();
-		// bs.readAll();
-		while (sock_b.waitForReadyRead(1000)) {
-			int len = sock_b.readDatagram(buf, sizeof(buf));
-			buf[len] = 0;
-			if (buf[0] == 's') {
-				printf("sync ok\n"), fflush(stdout);
-				double dt = max((getUnixTime() - time_start) * 1000.0, 1.0);
-				printf("Sent %d bytes in %.0lf ms (%.0lf KB/s)\n", sz, dt, sz / (dt * 0.001) / 1024.0), fflush(stdout);
-				return;
-			}
-			else printf("sync fail %s\n", buf);
-		}
-	}
+	send_payload(buf, sz, fileAll, time_start);
 }
 
 string getFileMD5(string filename) {
