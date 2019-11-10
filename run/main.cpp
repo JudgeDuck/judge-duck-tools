@@ -33,6 +33,12 @@ size_t fileSize(const char *fn) {
 
 #include <unistd.h>
 
+const int PACKET_SIZE = 1400;
+const double RTT_ms = 3;
+const double RTT_s = RTT_ms * 0.001;
+
+#define MAX_STDOUT_LEN (64 * 1024 * 1024)
+
 void sendPacket(string content) {
 	printf("sendPacket %s\n", content.c_str());
 	ts << content.c_str();
@@ -44,9 +50,6 @@ void send_payload(char *buf, int sz, char *payload, double time_start) {
 	typedef pair<double, pii> pdii;
 	set<int> todo_set;
 	priority_queue<pdii, vector<pdii>, greater<pdii> > todo_queue;
-	const int PACKET_SIZE = 1400;
-	const double RTT_ms = 2;
-	const double RTT_s = RTT_ms * 0.001;
 	
 	for (int i = 0; i < sz; i += PACKET_SIZE) {
 		todo_set.insert(i);
@@ -313,11 +316,146 @@ void init_rand() {
 	fclose(f);
 }
 
+void get_stdout(const char *stdout_save_path) {
+	static char buf[2333];
+	
+	double time_start = getUnixTime();
+	
+	sock_c.write("stdout-query");
+	sock_c.flush();
+	
+	unsigned stdout_len = 0;
+	
+	while (sock_b.waitForReadyRead(RTT_ms)) {
+		int len = sock_b.readDatagram(buf, sizeof(buf));
+		if (len != 8) continue;
+		if (strncmp(buf, "slen", 4) != 0) {
+			continue;
+		} 
+		
+		memcpy(&stdout_len, buf + 4, 4);
+		if (stdout_len > MAX_STDOUT_LEN) {
+			stdout_len = MAX_STDOUT_LEN;
+		}
+		
+		break;
+	}
+	
+	printf("stdout_len = %u\n", stdout_len);
+	int sz = stdout_len;
+	
+	char *stdout_content = new char[stdout_len + 1];
+	typedef pair<int, int> pii;
+	typedef pair<double, pii> pdii;
+	set<int> todo_set;
+	priority_queue<pdii, vector<pdii>, greater<pdii> > todo_queue;
+	
+	for (int i = 0; i < sz; i += PACKET_SIZE) {
+		todo_set.insert(i);
+		todo_queue.push(pdii(time_start, pii(i, min(sz - i, PACKET_SIZE))));
+	}
+	
+	double next_report_t = getUnixTime();
+	int n_cur_requested = 0;
+	while (!todo_queue.empty()) {
+		if (getUnixTime() >= next_report_t) {
+			printf("set_size %d, queue_size %d, cur_requested %d\n",
+				(int) todo_set.size(), (int) todo_queue.size(), n_cur_requested);
+			next_report_t += 1.0;
+			n_cur_requested = 0;
+		}
+		if (sock_b.waitForReadyRead(0)) {
+			int len = sock_b.readDatagram(buf, sizeof(buf));
+			buf[len] = 0;
+			
+			if (len <= 18) continue;
+			if (strncmp(buf, "s content ", 10) != 0) {
+				continue;
+			}
+			
+			unsigned recv_off, recv_len;
+			memcpy(&recv_off, buf + 10, 4);
+			memcpy(&recv_len, buf + 14, 4);
+			
+			if (recv_off > stdout_len) {
+				continue;
+			}
+			if (recv_len > stdout_len || recv_off + recv_len > stdout_len) {
+				continue;
+			}
+			if (recv_len != (unsigned) (len - 18)) {
+				continue;
+			}
+			if (min(sz - recv_off, (unsigned) PACKET_SIZE) != recv_len) {
+				continue;
+			}
+			
+			if (todo_set.count((int) recv_off) == 0) continue;
+			todo_set.erase((int) recv_off);
+			
+			memcpy(stdout_content + recv_off, buf + 18, recv_len);
+		} else {
+			pdii p = todo_queue.top();
+			
+			int off = p.second.first;
+			int len = p.second.second;
+			if (todo_set.count(off) == 0) {
+				todo_queue.pop();
+				continue;
+			}
+			
+			double t = p.first;
+			double cur_t = getUnixTime();
+			if (cur_t < t) {
+				continue;
+			}
+			
+			todo_queue.pop();
+			todo_queue.push(pdii(t + RTT_s, p.second));
+			
+			memcpy(buf, "stdout-get", 10);
+			memcpy(buf + 10, &off, 4);
+			memcpy(buf + 14, &len, 4);
+			sock_c.write(buf, 18);
+			sock_c.flush();
+			++n_cur_requested;
+		}
+	}
+	
+	while (sock_b.waitForReadyRead(RTT_ms + 1)) {
+		sock_b.readDatagram(buf, sizeof(buf));
+	}
+	
+	double dt = max((getUnixTime() - time_start) * 1000.0, 1.0);
+	printf("Received %d bytes in %.0lf ms (%.0lf KB/s)\n", sz, dt, sz / (dt * 0.001) / 1024.0);
+	
+	// save stdout to file
+	FILE *f = fopen(stdout_save_path, "wb");
+	if (f) {
+		fwrite(stdout_content, sz, 1, f);
+		fclose(f);
+	}
+	delete []stdout_content;
+}
+
+void send_done() {
+	sock_c.write("done", 4);
+	sock_c.flush();
+	
+	// 10ms ?
+	while (sock_b.waitForReadyRead(10)) {
+		static char buf[2333];
+		sock_b.readDatagram(buf, sizeof(buf));
+	}
+	
+	printf("done\n");
+}
+
 int main(int argc, char **argv) {
 	QCoreApplication a(argc, argv);
 	
-	if (argc != 1 + 7) {
-		qout << "usage: run [ip] [local-port] [input-file] [answer-file] [binary-file] [time_ns] [mem_kb]\n";
+	if (argc != 1 + 7 && argc != 1 + 8) {
+		qout << "usage: run [ip] [local-port] [input-file] [answer-file] [binary-file] [time_ns] [mem_kb] [[stdout-save-path]]\n";
 		qout.flush();
 		return 1;
 	}
@@ -333,6 +471,12 @@ int main(int argc, char **argv) {
 	
 	qout << judgeFile(ip, local_port, input_file, answer_file, binary_file);
 	qout.flush();
+	
+	if (argc == 1 + 8) {
+		get_stdout(argv[8]);
+	}
+	
+	send_done();
 	
 	return 0;
 }
