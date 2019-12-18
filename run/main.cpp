@@ -39,10 +39,50 @@ const double RTT_s = RTT_ms * 0.001;
 
 #define MAX_STDOUT_LEN (64 * 1024 * 1024)
 
+string duck_ip;
+int duck_port;
+
 void sendPacket(string content) {
 	printf("sendPacket %s\n", content.c_str());
-	ts << content.c_str();
-	ts.flush();
+	if (sock_c.state() != QAbstractSocket::ConnectedState) {
+		sock_c.connectToHost(duck_ip.c_str(), duck_port);
+		qDebug() << sock_c.waitForConnected();
+	}
+	sock_c.write(content.c_str(), content.length());
+	sock_c.flush();
+}
+
+string sendControlPacket(string content, bool has_seq_num, int RTO_ms = (int) RTT_ms) {
+	char buf[2048];
+	
+	// Clear buffer
+	while (sock_b.waitForReadyRead(RTT_ms)) {
+		sock_b.readDatagram(buf, sizeof(buf));
+	}
+	
+	if (has_seq_num) {
+		static int cur_seq_num = 0;
+		cur_seq_num = (cur_seq_num + 1) % 128;
+		char c = (char) (128 | cur_seq_num);
+		content = string(&c, 1) + content;
+	}
+	
+	int reply_len = 0;
+	int n_retries = 20;  // ???
+	while (1) {
+		sendPacket(content);
+		while (sock_b.waitForReadyRead(RTO_ms)) {
+			int tmp = sock_b.readDatagram(buf, sizeof(buf));
+			if (tmp > 0) {
+				reply_len = tmp;
+				break;
+			}
+		}
+		if (reply_len > 0) break;
+		if (--n_retries <= 0) break;
+	}
+	
+	return string(buf, reply_len);
 }
 
 void send_payload(char *buf, int sz, char *payload, double time_start) {
@@ -107,25 +147,18 @@ void send_payload(char *buf, int sz, char *payload, double time_start) {
 	}
 	
 	delete[] payload;
-	printf("send ok, waiting sync\n"), fflush(stdout);
-	while (1) {
-		ts << "e";
-		ts.flush();
-		bool ok = false;
-		while (sock_b.waitForReadyRead(RTT_ms + 1)) {
-			int len = sock_b.readDatagram(buf, sizeof(buf));
-			buf[len] = 0;
-			if (buf[0] == 's') {
-				printf("sync ok\n"), fflush(stdout);
-				ok = true;
-			}
-		}
-		if (ok) {
-			double dt = max((getUnixTime() - time_start) * 1000.0, 1.0);
-			printf("Sent %d bytes in %.0lf ms (%.0lf KB/s)\n", sz, dt, sz / (dt * 0.001) / 1024.0), fflush(stdout);
-			break;
-		}
+	
+	printf("send ok, waiting sync ... ");
+	string reply = sendControlPacket("e", true);
+	printf("%s\n", reply.c_str());
+	reverse(reply.begin(), reply.end());
+	if (reply.substr(0, 2) != "ko") {
+		printf("GG\n");
+		exit(1);
 	}
+	
+	double dt = max((getUnixTime() - time_start) * 1000.0, 1.0);
+	printf("Sent %d bytes in %.0lf ms (%.0lf KB/s)\n", sz, dt, sz / (dt * 0.001) / 1024.0), fflush(stdout);
 }
 
 void sendFile(const char *sfn, const char *tfn) {
@@ -141,57 +174,37 @@ void sendFile(const char *sfn, const char *tfn) {
 	printf("filesize %d\n", (int) sz), fflush(stdout);
 	double time_start = getUnixTime();
 	string fn = string("f") + tfn;
-	// qDebug() << bs.readAll();
-	ts << fn.c_str();
-	ts.flush();
-		// bs.readAll();
-	while (1) {
-		while (sock_b.waitForReadyRead(1000)) {
-			int len = sock_b.readDatagram(buf, sizeof(buf));
-			buf[len] = 0;
-			if (buf[0] == 'f') {
-				printf("sync ok\n"), fflush(stdout);
-				goto next;
-			} else {
-				printf("sync fail %s\n", buf);
-			}
-		}
+	string reply = sendControlPacket(fn, true);
+	if (reply == "file") {
+		printf("sync ok\n");
+		send_payload(buf, sz, fileAll, time_start);
+	} else {
+		printf("sync fail %s\n", reply.c_str());
+		exit(1);
 	}
-next:;
-	send_payload(buf, sz, fileAll, time_start);
 }
-void runCmd(string cmd) {
+void runCmd(string cmd, int time_limit_ms) {
 	printf("runCmd %s\n", cmd.c_str());
 	cmd = "c" + cmd;
-	ts << cmd.c_str();
-	ts.flush();
-	sock_b.waitForReadyRead();
-	// bs.readAll();
-	char buf[5120];
-	sock_b.waitForReadyRead(1000);
-	sock_b.readDatagram(buf, sizeof(buf));
-	printf("runCmd ok\n");
+	string reply = sendControlPacket(cmd, true, time_limit_ms + 1000 * 10);  // +10s ???
+	printf("%s\n", reply.c_str());
+	reverse(reply.begin(), reply.end());
+	if (reply.substr(0, 2) != "ko") {
+		printf("GG\n");
+		exit(1);
+	}
 }
 
 QString fileContent(string fn) {
 	printf("fileContent %s\n", fn.c_str());
 	fn = "o" + fn;
-	ts << fn.c_str();
-	ts.flush();
+	string reply = sendControlPacket(fn, true);
 	QString ret = "";
-	std::string str;
-	while (1) {
-		sock_b.waitForReadyRead();
-		char buf[2048];
-		int len = sock_b.readDatagram(buf, sizeof(buf));
-		if (len == 1 && buf[0] == 'F') break;
-		//ret += QString(buf + 1, len - 1);
-		for (int i = 1; i < len; i++) str += buf[i];
+	if (reply.substr(0, 1) == "f") {
+		reply = reply.substr(1);
+		ret = QString::fromStdString(reply);
 	}
-	ret = QString::fromStdString(str);
-	//sock_b.waitForReadyRead();
-	//QString ret = bs.readAll();
-	printf("fileContent ok:\n%s", ret.toStdString().c_str());
+	printf("fileContent ok:\n%s\n", reply.c_str());
 	return ret;
 }
 
@@ -225,28 +238,17 @@ void sendObj(const char *filename, const char *md5) {
 	memcpy(tmp, &sz, 4);
 	for (int i = 0; i < 4; i++) fn[i + 8] = tmp[i];
 	
-	// qDebug() << bs.readAll();
-	// ts << fn.c_str();
-	ds.writeRawData(fn.c_str(), fn.length());
-	ts.flush();
-		// bs.readAll();
-	while (1) {
-		while (sock_b.waitForReadyRead(1000)) {
-			int len = sock_b.readDatagram(buf, sizeof(buf));
-			buf[len] = 0;
-			if (buf[0] == 's') {
-				printf("sync ok\n"), fflush(stdout);
-				goto next;
-			} else if (buf[0] == 'g') {
-				printf("cache hit !!!\n"), fflush(stdout);
-				return;
-			} else {
-				printf("sync fail %s\n", buf);
-			}
-		}
+	string reply = sendControlPacket(fn, true);
+	printf("reply: %s\n", reply.c_str());
+	if (reply == "sendobj begin") {
+		send_payload(buf, sz, fileAll, time_start);
+	} else if (reply == "gg sendobj") {
+		printf("cache hit !!!\n");
+		return;
+	} else {
+		printf("GG\n");
+		exit(1);
 	}
-next:;
-	send_payload(buf, sz, fileAll, time_start);
 }
 
 string getFileMD5(string filename) {
@@ -263,14 +265,13 @@ string getFileMD5(string filename) {
 
 void setObj(char type, const char *md5) {
 	printf("setObj %c %s\n", type, md5);
-	ts << (string("setobj_") + type + string(md5)).c_str();
-	ts.flush();
-	sock_b.waitForReadyRead();
-	// bs.readAll();
-	char buf[5120];
-	sock_b.waitForReadyRead(1000);
-	sock_b.readDatagram(buf, sizeof(buf));
-	printf("setObj ok\n");
+	string request = string("setobj_") + type + string(md5);
+	string reply = sendControlPacket(request, true);
+	printf("%s\n", reply.c_str());
+	if (reply != string("setobj_") + type + " ok") {
+		printf("GG\n");
+		exit(1);
+	}
 }
 
 void sendDataFiles(const char *in_file, const char *ans_file) {
@@ -280,6 +281,10 @@ void sendDataFiles(const char *in_file, const char *ans_file) {
 	sendObj(ans_file, ans_md5.c_str());
 	setObj('I', in_md5.c_str());
 	setObj('A', ans_md5.c_str());
+}
+
+void send_clear() {
+	sendControlPacket("clear", false);
 }
 
 QString judgeFile(string ip, int local_port, string input_file, string answer_file, string binary_file) {
@@ -293,18 +298,20 @@ QString judgeFile(string ip, int local_port, string input_file, string answer_fi
 	}
 	
 	qDebug() << sock_b.bind(local_port);
-	sock_c.connectToHost(ip.c_str(), 8000);
+	duck_ip = ip;
+	duck_port = 8000;
+	sock_c.connectToHost(duck_ip.c_str(), duck_port);
 	qDebug() << sock_c.waitForConnected();
 	//bs.setDevice(&sock_b);
 	ts.setDevice(&sock_c);
 	ds.setDevice(&sock_c);
 	
-	sendPacket("clear");
+	send_clear();
 	
 	sendDataFiles(input_file.c_str(), answer_file.c_str());
 	
 	sendFile(binary_file.c_str(), "judging");
-	runCmd("arbiter judging " + to_string(time_ns) + " " + to_string(mem_kb) + " > arbiter.out");
+	runCmd("arbiter judging " + to_string(time_ns) + " " + to_string(mem_kb) + " > arbiter.out", time_ns / 1000000);
 	return fileContent("arbiter.out");
 }
 
@@ -442,8 +449,7 @@ void send_done() {
 	sock_c.write("done", 4);
 	sock_c.flush();
 	
-	// 10ms ?
-	while (sock_b.waitForReadyRead(10)) {
+	while (sock_b.waitForReadyRead(RTT_ms)) {
 		static char buf[2333];
 		sock_b.readDatagram(buf, sizeof(buf));
 	}
