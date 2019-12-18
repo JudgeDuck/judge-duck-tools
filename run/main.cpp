@@ -260,6 +260,7 @@ string getFileMD5(string filename) {
 	system(("md5sum " + filename + " | awk {'print $1'} > /tmp/" + string(tmp_name)).c_str());
 	string ret = localFileContent((string("/tmp/") + tmp_name).c_str()).toLatin1().constData();
 	if (ret.length() > 0 && ret[ret.length() - 1] == '\n') ret = ret.substr(0, ret.length() - 1);
+	system(("rm -f /tmp/" + string(tmp_name)).c_str());
 	return ret;
 }
 
