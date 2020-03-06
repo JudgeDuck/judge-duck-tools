@@ -8,6 +8,7 @@
 #include <bits/stdc++.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <unistd.h>
 
 using namespace std;
@@ -458,6 +459,14 @@ void send_done() {
 	printf("done\n");
 }
 
+bool acquire_lock(const char *filename) {
+	int fd = open(filename, O_RDONLY | O_CREAT, 0644);
+	if (fd < 0) return false;
+	int r = flock(fd, LOCK_EX);
+	if (r < 0) return false;
+	return true;
+}
+
 int main(int argc, char **argv) {
 	QCoreApplication a(argc, argv);
 	
@@ -473,6 +482,10 @@ int main(int argc, char **argv) {
 	string binary_file = argv[5];
 	time_ns = atoll(argv[6]);
 	mem_kb = atoi(argv[7]);
+	
+	if (!acquire_lock(("/tmp/ducklock_" + ip).c_str())) {
+		return 1;
+	}
 	
 	init_rand();
 	
